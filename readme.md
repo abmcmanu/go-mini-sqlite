@@ -1,53 +1,63 @@
-### Mini moteur de données
+### Mini Data Engine
 
-ce mini moteur de base de données relationnelle est écrit en Go, inspiré de SQLite.
-Il permet de créer des bases, des tables, d’insérer et de sélectionner des données, le tout en mémoire avec persistance sur disque.
+This mini relational database engine is written in **Go**, inspired by **SQLite**.  
+It allows you to **create databases and tables**, **insert**, and **select data**, all **in-memory** with **disk persistence**.
 
+This is an **educational project** built to understand the core concepts behind **database management systems (DBMS)** such as indexing, table structures, schema design, SQL parsing, and persistence.
 
-C’est un projet pédagogique pour comprendre les notions de base des SGBD : indexation, tables, schéma, parsing SQL, et persistance.
+---
 
-### Fonctionnalités
-- Gestion de bases de données multiples 
-- Tables avec schéma personnalisé (type INT ou STRING, PRIMARY KEY, UNIQUE, NOT NULL)
-- Index logique via un B+Tree simplifié 
-- Commandes SQL supportées :
-  - CREATE DATABASE 
-  - USE <database>
-  - CREATE TABLE 
-  - INSERT INTO 
-  - SELECT ... WHERE ... 
-- Persistance des données sur disque via fichiers gob 
-- Shell interactif minimal
+### 🧩 Features
 
+- Support for **multiple databases**  
+- **Tables with customizable schemas** (`INT`, `STRING`, with `PRIMARY KEY`, `UNIQUE`, `NOT NULL` constraints)  
+- **Logical indexing** through a simplified **B+Tree**  
+- Supported SQL commands:
+  - `CREATE DATABASE`
+  - `USE <database>`
+  - `CREATE TABLE`
+  - `INSERT INTO`
+  - `SELECT ... WHERE ...`
+- **Data persistence** on disk via `.gob` files  
+- **Minimal interactive shell (REPL)**
 
-### Notions et concepts abordés
+---
 
-1- Structures de données 
-- BPTree : index logique pour une recherche rapide des lignes par clé primaire 
-- Table : contient le schéma, les lignes, et l’index 
-- Database : gestion des bases et tables en mémoire 
+### 🧠 Concepts & Architecture
 
-2- Contrainte de schéma 
-- PRIMARY KEY : clé unique par table 
-- NOT NULL : colonne obligatoire 
-- UNIQUE : valeur unique dans la colonne
-3- Persistance 
-- Sérialisation avec encoding/gob
-- Chaque table est sauvegardée dans un fichier .tbl
-- Les données sont rechargées en mémoire au lancement
+#### 1. Data Structures
+- **B+Tree** – Logical index for fast row lookup by primary key  
+- **Table** – Holds schema, rows, and index  
+- **Database** – Manages databases and tables in memory  
 
-4- Parsing SQL 
-- Utilisation de regex pour analyser les commandes SQL
-- Création d’un AST simple (Statement interface) avec méthode Exec
+#### 2. Schema Constraints
+- **PRIMARY KEY** – Unique key per table  
+- **NOT NULL** – Mandatory column  
+- **UNIQUE** – Ensures unique values in a column  
 
-5- Shell REPL 
-- Lecture ligne par ligne
-- Exécution directe des commandes SQL
-- Affichage formaté des résultats
+#### 3. Persistence
+- Serialization handled with `encoding/gob`  
+- Each table is saved to a `.tbl` file  
+- Data is **reloaded into memory** at startup  
 
+#### 4. SQL Parsing
+- Uses **regular expressions** to parse SQL commands  
+- Builds a **simple AST** (`Statement` interface) with an `Exec` method  
 
-### Limitations actuelles
-- Le parser ne supporte pas les lignes multiples ni les commentaires
-- Pas de support pour UPDATE, DELETE, JOIN ou ORDER BY
-- Le B+Tree est logique et simplifié, pas optimisé pour de grandes bases
-- Le shell ne supporte que des commandes terminées par ; sur une seule ligne
+#### 5. Interactive Shell (REPL)
+- Reads input line by line  
+- Executes SQL commands directly  
+- Displays formatted query results  
+
+---
+
+### ⚠️ Current Limitations
+
+- The parser does **not** support multiline statements or comments  
+- No support yet for `UPDATE`, `DELETE`, `JOIN`, or `ORDER BY`  
+- The B+Tree is **logical and simplified**, not optimized for large databases  
+- The shell only supports **single-line commands ending with `;`**
+
+---
+
+> 🧪 *A hands-on project to explore how relational databases work from the inside out — from parsing to persistence.*
