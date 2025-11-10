@@ -51,7 +51,7 @@ This is an **educational project** built to understand the core concepts behind 
 
 ---
 
-### ⚠️ Current Limitations
+### ⚠️ Current Limitations - current version 0.01
 
 - The parser does **not** support multiline statements or comments  
 - No support yet for `UPDATE`, `DELETE`, `JOIN`, or `ORDER BY`  
