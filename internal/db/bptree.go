@@ -5,23 +5,18 @@ import (
 	"sync"
 )
 
-// Entry représente une paire clé → ligne (enregistrements)
 type Entry struct {
 	Key   string
 	Value map[string]string
 }
 
-// BPTree est une version simplifiée d’un B+ Tree :
-// - Les clés sont stockées triées pour recherche rapide
-// - Chaque clé pointe vers une ligne complète (map[string]string)
-// - Pas de pages physiques ni de balance complexe (simulation logique)
+// BPTree est une version simplifiée d’un B+ Tree logique.
 type BPTree struct {
-	order int
-	data  []Entry
+	order int     // ordre logique
+	data  []Entry // liste triée de (clé, valeur)
 	mu    sync.RWMutex
 }
 
-// NewBPTree crée un nouvel arbre avec un ordre donné (ordre = nb max d’enfants / 2)
 func NewBPTree(order int) *BPTree {
 	return &BPTree{
 		order: order,
@@ -29,12 +24,11 @@ func NewBPTree(order int) *BPTree {
 	}
 }
 
-// Insert ajoute ou met à jour une entrée (clé unique)
 func (b *BPTree) Insert(key string, value map[string]string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	// Si clé existe déjà, on met à jour
+	// Si la clé existe déjà, mise à jour
 	for i, e := range b.data {
 		if e.Key == key {
 			b.data[i].Value = value
@@ -42,26 +36,29 @@ func (b *BPTree) Insert(key string, value map[string]string) {
 		}
 	}
 
-	// Sinon on insère trié
+	// Sinon, on insère et on trie
 	b.data = append(b.data, Entry{Key: key, Value: value})
 	sort.Slice(b.data, func(i, j int) bool {
 		return b.data[i].Key < b.data[j].Key
 	})
 }
 
-// Get recherche une clé dans l’arbre (logique)
+// Get recherche une clé dans l’arbre.
 func (b *BPTree) Get(key string) (map[string]string, bool) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	for _, e := range b.data {
-		if e.Key == key {
-			return e.Value, true
-		}
+
+	// Recherche binaire pour plus d’efficacité
+	i := sort.Search(len(b.data), func(i int) bool {
+		return b.data[i].Key >= key
+	})
+
+	if i < len(b.data) && b.data[i].Key == key {
+		return b.data[i].Value, true
 	}
 	return nil, false
 }
 
-// Delete supprime une entrée selon la clé
 func (b *BPTree) Delete(key string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -74,10 +71,10 @@ func (b *BPTree) Delete(key string) {
 	}
 }
 
-// GetAll renvoie toutes les lignes stockées dans l’arbre
 func (b *BPTree) GetAll() []map[string]string {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
+
 	rows := make([]map[string]string, 0, len(b.data))
 	for _, e := range b.data {
 		rows = append(rows, e.Value)
@@ -85,10 +82,11 @@ func (b *BPTree) GetAll() []map[string]string {
 	return rows
 }
 
-// Keys renvoie la liste des clés triées
+// Keys renvoie la liste des clés triées.
 func (b *BPTree) Keys() []string {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
+
 	keys := make([]string, len(b.data))
 	for i, e := range b.data {
 		keys[i] = e.Key
@@ -97,9 +95,11 @@ func (b *BPTree) Keys() []string {
 }
 
 // Rebuild est appelé après rechargement depuis le disque
+// pour s'assurer que les clés sont bien triées.
 func (b *BPTree) Rebuild() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
 	sort.Slice(b.data, func(i, j int) bool {
 		return b.data[i].Key < b.data[j].Key
 	})
