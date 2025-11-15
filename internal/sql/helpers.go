@@ -5,6 +5,39 @@ import (
 	"strings"
 )
 
+type Condition struct {
+	Column string
+	Value  string
+}
+
+type WhereClause struct {
+	Conditions []Condition
+	Operator   string // "AND" or "OR"
+}
+
+func (w *WhereClause) Evaluate(row map[string]string) bool {
+	if len(w.Conditions) == 0 {
+		return true
+	}
+
+	if w.Operator == "AND" {
+		for _, cond := range w.Conditions {
+			if row[cond.Column] != cond.Value {
+				return false
+			}
+		}
+		return true
+	}
+
+	// OR operator
+	for _, cond := range w.Conditions {
+		if row[cond.Column] == cond.Value {
+			return true
+		}
+	}
+	return false
+}
+
 func splitAndTrim(s string) []string {
 	parts := strings.Split(s, ",")
 	for i := range parts {

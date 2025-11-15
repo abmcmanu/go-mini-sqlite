@@ -53,9 +53,7 @@ func (s *InsertStmt) Exec(d *db.Database) error {
 
 type SelectStmt struct {
 	Table            string
-	Column           string
-	Value            string
-	HasWhere         bool
+	Where            *WhereClause
 	OrderByColumn    string
 	OrderByDirection string
 	Limit            int
@@ -68,28 +66,12 @@ func parseSelect(query string) (Statement, error) {
 
 	// Check for aggregate functions: COUNT, SUM, AVG
 	if strings.Contains(queryUpper, "COUNT(") || strings.Contains(queryUpper, "SUM(") || strings.Contains(queryUpper, "AVG(") {
-		// SELECT COUNT(*) FROM table [WHERE col=val]
-		// SELECT SUM(column) FROM table [WHERE col=val]
-		// SELECT AVG(column) FROM table [WHERE col=val]
-		re := regexp.MustCompile(`(?i)SELECT\s+(COUNT|SUM|AVG)\s*\(\s*([a-zA-Z0-9_*]+)\s*\)\s+FROM\s+([a-zA-Z0-9_]+)(?:\s+WHERE\s+([a-zA-Z0-9_]+)\s*=\s*"?([^"]+)"?)?;?`)
-		m := re.FindStringSubmatch(query)
-		if len(m) < 4 {
-			return nil, errors.New("invalid aggregate SELECT syntax")
-		}
+		return parseAggregateSelect(query)
+	}
 
-		stmt := &SelectStmt{
-			Table:           m[3],
-			AggregateFunc:   strings.ToUpper(m[1]),
-			AggregateColumn: m[2],
-		}
-
-		if len(m) >= 6 && m[4] != "" {
-			stmt.HasWhere = true
-			stmt.Column = m[4]
-			stmt.Value = m[5]
-		}
-
-		return stmt, nil
+	// Check for AND/OR in WHERE clause
+	if strings.Contains(queryUpper, " AND ") || strings.Contains(queryUpper, " OR ") {
+		return parseSelectWithMultipleConditions(query)
 	}
 
 	// Regular SELECT * FROM table [WHERE col=val] [ORDER BY col [ASC|DESC]] [LIMIT n]
@@ -102,9 +84,10 @@ func parseSelect(query string) (Statement, error) {
 	stmt := &SelectStmt{Table: m[1]}
 
 	if len(m) >= 4 && m[2] != "" {
-		stmt.HasWhere = true
-		stmt.Column = m[2]
-		stmt.Value = m[3]
+		stmt.Where = &WhereClause{
+			Conditions: []Condition{{Column: m[2], Value: m[3]}},
+			Operator:   "AND",
+		}
 	}
 
 	if len(m) >= 5 && m[4] != "" {
@@ -127,6 +110,140 @@ func parseSelect(query string) (Statement, error) {
 	return stmt, nil
 }
 
+func parseAggregateSelect(query string) (Statement, error) {
+	// SELECT COUNT(*) FROM table [WHERE conditions]
+	// SELECT SUM(column) FROM table [WHERE conditions]
+	// SELECT AVG(column) FROM table [WHERE conditions]
+
+	queryUpper := strings.ToUpper(query)
+
+	// Check for AND/OR in WHERE clause
+	if strings.Contains(queryUpper, " AND ") || strings.Contains(queryUpper, " OR ") {
+		re := regexp.MustCompile(`(?i)SELECT\s+(COUNT|SUM|AVG)\s*\(\s*([a-zA-Z0-9_*]+)\s*\)\s+FROM\s+([a-zA-Z0-9_]+)\s+WHERE\s+(.+?);?$`)
+		m := re.FindStringSubmatch(query)
+		if len(m) < 5 {
+			return nil, errors.New("invalid aggregate SELECT syntax")
+		}
+
+		whereClause, err := parseWhereClause(m[4])
+		if err != nil {
+			return nil, err
+		}
+
+		return &SelectStmt{
+			Table:           m[3],
+			AggregateFunc:   strings.ToUpper(m[1]),
+			AggregateColumn: m[2],
+			Where:           whereClause,
+		}, nil
+	}
+
+	// Single condition or no WHERE
+	re := regexp.MustCompile(`(?i)SELECT\s+(COUNT|SUM|AVG)\s*\(\s*([a-zA-Z0-9_*]+)\s*\)\s+FROM\s+([a-zA-Z0-9_]+)(?:\s+WHERE\s+([a-zA-Z0-9_]+)\s*=\s*"?([^"]+)"?)?;?`)
+	m := re.FindStringSubmatch(query)
+	if len(m) < 4 {
+		return nil, errors.New("invalid aggregate SELECT syntax")
+	}
+
+	stmt := &SelectStmt{
+		Table:           m[3],
+		AggregateFunc:   strings.ToUpper(m[1]),
+		AggregateColumn: m[2],
+	}
+
+	if len(m) >= 6 && m[4] != "" {
+		stmt.Where = &WhereClause{
+			Conditions: []Condition{{Column: m[4], Value: m[5]}},
+			Operator:   "AND",
+		}
+	}
+
+	return stmt, nil
+}
+
+func parseSelectWithMultipleConditions(query string) (Statement, error) {
+	// SELECT * FROM table WHERE col1=val1 AND/OR col2=val2 [ORDER BY col [ASC|DESC]] [LIMIT n]
+	re := regexp.MustCompile(`(?i)SELECT\s+\*\s+FROM\s+([a-zA-Z0-9_]+)\s+WHERE\s+(.+?)(?:\s+ORDER\s+BY\s+([a-zA-Z0-9_]+)(?:\s+(ASC|DESC))?)?\s*(?:LIMIT\s+(\d+))?\s*;?$`)
+	m := re.FindStringSubmatch(query)
+	if len(m) < 3 {
+		return nil, errors.New("invalid SELECT syntax with multiple conditions")
+	}
+
+	whereClause, err := parseWhereClause(m[2])
+	if err != nil {
+		return nil, err
+	}
+
+	stmt := &SelectStmt{
+		Table: m[1],
+		Where: whereClause,
+	}
+
+	if len(m) >= 4 && m[3] != "" {
+		stmt.OrderByColumn = m[3]
+		if len(m) >= 5 && m[4] != "" {
+			stmt.OrderByDirection = strings.ToUpper(m[4])
+		} else {
+			stmt.OrderByDirection = "ASC"
+		}
+	}
+
+	if len(m) >= 6 && m[5] != "" {
+		limit, err := parseNumber(m[5])
+		if err != nil || limit < 0 {
+			return nil, errors.New("LIMIT must be a positive number")
+		}
+		stmt.Limit = int(limit)
+	}
+
+	return stmt, nil
+}
+
+func parseWhereClause(whereStr string) (*WhereClause, error) {
+	whereStr = strings.TrimSpace(whereStr)
+	queryUpper := strings.ToUpper(whereStr)
+
+	var operator string
+	var conditionParts []string
+
+	if strings.Contains(queryUpper, " AND ") {
+		operator = "AND"
+		conditionParts = strings.Split(whereStr, " AND ")
+		// Fallback to lowercase
+		if len(conditionParts) == 1 {
+			conditionParts = strings.Split(whereStr, " and ")
+		}
+	} else if strings.Contains(queryUpper, " OR ") {
+		operator = "OR"
+		conditionParts = strings.Split(whereStr, " OR ")
+		// Fallback to lowercase
+		if len(conditionParts) == 1 {
+			conditionParts = strings.Split(whereStr, " or ")
+		}
+	} else {
+		return nil, errors.New("no AND/OR operator found")
+	}
+
+	var conditions []Condition
+	for _, part := range conditionParts {
+		part = strings.TrimSpace(part)
+		re := regexp.MustCompile(`([a-zA-Z0-9_]+)\s*=\s*"?([^"]+)"?`)
+		m := re.FindStringSubmatch(part)
+		if len(m) < 3 {
+			return nil, fmt.Errorf("invalid condition: %s", part)
+		}
+		conditions = append(conditions, Condition{
+			Column: m[1],
+			Value:  strings.Trim(m[2], `"`),
+		})
+	}
+
+	return &WhereClause{
+		Conditions: conditions,
+		Operator:   operator,
+	}, nil
+}
+
 func (s *SelectStmt) Exec(d *db.Database) error {
 	if d.ActiveDB == "" {
 		return errors.New("no database selected — use USE <database>")
@@ -138,13 +255,16 @@ func (s *SelectStmt) Exec(d *db.Database) error {
 	}
 
 	var rows []map[string]string
-	if s.HasWhere {
-		rows, err = t.SelectWhere(s.Column, s.Value)
+	if s.Where != nil {
+		// Filter rows using WhereClause
+		allRows := t.SelectAll()
+		for _, row := range allRows {
+			if s.Where.Evaluate(row) {
+				rows = append(rows, row)
+			}
+		}
 	} else {
 		rows = t.SelectAll()
-	}
-	if err != nil {
-		return err
 	}
 
 	// Handle aggregate functions
@@ -224,13 +344,50 @@ func (s *SelectStmt) execAggregate(rows []map[string]string) error {
 }
 
 type UpdateStmt struct {
-	Table       string
-	Updates     map[string]string
-	WhereColumn string
-	WhereValue  string
+	Table   string
+	Updates map[string]string
+	Where   *WhereClause
 }
 
 func parseUpdate(query string) (Statement, error) {
+	queryUpper := strings.ToUpper(query)
+
+	// Check for AND/OR in WHERE clause
+	if strings.Contains(queryUpper, " AND ") || strings.Contains(queryUpper, " OR ") {
+		re := regexp.MustCompile(`(?i)UPDATE\s+([a-zA-Z0-9_]+)\s+SET\s+(.+?)\s+WHERE\s+(.+?);?$`)
+		m := re.FindStringSubmatch(query)
+		if len(m) < 4 {
+			return nil, errors.New("invalid UPDATE syntax with multiple conditions")
+		}
+
+		table := m[1]
+		setPart := m[2]
+
+		updates := make(map[string]string)
+		assignments := splitAndTrim(setPart)
+		for _, assign := range assignments {
+			parts := strings.Split(assign, "=")
+			if len(parts) != 2 {
+				return nil, fmt.Errorf("invalid assignment: %s", assign)
+			}
+			colName := strings.TrimSpace(parts[0])
+			colValue := strings.Trim(strings.TrimSpace(parts[1]), `"`)
+			updates[colName] = colValue
+		}
+
+		whereClause, err := parseWhereClause(m[3])
+		if err != nil {
+			return nil, err
+		}
+
+		return &UpdateStmt{
+			Table:   table,
+			Updates: updates,
+			Where:   whereClause,
+		}, nil
+	}
+
+	// Single condition
 	re := regexp.MustCompile(`(?i)UPDATE\s+([a-zA-Z0-9_]+)\s+SET\s+(.+?)\s+WHERE\s+([a-zA-Z0-9_]+)\s*=\s*"?([^";]+)"?;?`)
 	m := re.FindStringSubmatch(query)
 	if len(m) < 5 {
@@ -239,8 +396,6 @@ func parseUpdate(query string) (Statement, error) {
 
 	table := m[1]
 	setPart := m[2]
-	whereCol := m[3]
-	whereVal := m[4]
 
 	updates := make(map[string]string)
 	assignments := splitAndTrim(setPart)
@@ -255,10 +410,12 @@ func parseUpdate(query string) (Statement, error) {
 	}
 
 	return &UpdateStmt{
-		Table:       table,
-		Updates:     updates,
-		WhereColumn: whereCol,
-		WhereValue:  whereVal,
+		Table:   table,
+		Updates: updates,
+		Where: &WhereClause{
+			Conditions: []Condition{{Column: m[3], Value: m[4]}},
+			Operator:   "AND",
+		},
 	}, nil
 }
 
@@ -272,8 +429,53 @@ func (s *UpdateStmt) Exec(d *db.Database) error {
 		return err
 	}
 
-	count, err := t.Update(s.WhereColumn, s.WhereValue, s.Updates)
-	if err != nil {
+	// Get matching rows
+	allRows := t.SelectAll()
+	var matchingRows []map[string]string
+	for _, row := range allRows {
+		if s.Where.Evaluate(row) {
+			matchingRows = append(matchingRows, row)
+		}
+	}
+
+	if len(matchingRows) == 0 {
+		fmt.Println("0 row(s) updated.")
+		return nil
+	}
+
+	// Validate and update
+	cols := t.Schema.ColumnsMap()
+	pkName := t.PrimaryKey()
+
+	for colName, newVal := range s.Updates {
+		col, exists := cols[colName]
+		if !exists {
+			return fmt.Errorf("column '%s' does not exist", colName)
+		}
+		if col.PrimaryKey {
+			return fmt.Errorf("cannot update PRIMARY KEY column '%s'", colName)
+		}
+		if col.NotNull && newVal == "" {
+			return fmt.Errorf("column '%s' is NOT NULL", colName)
+		}
+	}
+
+	count := 0
+	for _, row := range matchingRows {
+		pkVal := row[pkName]
+		updatedRow := make(map[string]string)
+		for k, v := range row {
+			updatedRow[k] = v
+		}
+		for k, v := range s.Updates {
+			updatedRow[k] = v
+		}
+
+		t.Index.Insert(pkVal, updatedRow)
+		count++
+	}
+
+	if err := t.Save(); err != nil {
 		return err
 	}
 
@@ -282,12 +484,32 @@ func (s *UpdateStmt) Exec(d *db.Database) error {
 }
 
 type DeleteStmt struct {
-	Table       string
-	WhereColumn string
-	WhereValue  string
+	Table string
+	Where *WhereClause
 }
 
 func parseDelete(query string) (Statement, error) {
+	queryUpper := strings.ToUpper(query)
+
+	// Check for AND/OR in WHERE clause
+	if strings.Contains(queryUpper, " AND ") || strings.Contains(queryUpper, " OR ") {
+		re := regexp.MustCompile(`(?i)DELETE\s+FROM\s+([a-zA-Z0-9_]+)\s+WHERE\s+(.+?);?$`)
+		m := re.FindStringSubmatch(query)
+		if len(m) < 3 {
+			return nil, errors.New("invalid DELETE syntax with multiple conditions")
+		}
+
+		whereClause, err := parseWhereClause(m[2])
+		if err != nil {
+			return nil, err
+		}
+
+		return &DeleteStmt{
+			Table: m[1],
+			Where: whereClause,
+		}, nil
+	}
+	// Single condition
 	re := regexp.MustCompile(`(?i)DELETE\s+FROM\s+([a-zA-Z0-9_]+)\s+WHERE\s+([a-zA-Z0-9_]+)\s*=\s*"?([^";]+)"?;?`)
 	m := re.FindStringSubmatch(query)
 	if len(m) < 4 {
@@ -295,9 +517,11 @@ func parseDelete(query string) (Statement, error) {
 	}
 
 	return &DeleteStmt{
-		Table:       m[1],
-		WhereColumn: m[2],
-		WhereValue:  m[3],
+		Table: m[1],
+		Where: &WhereClause{
+			Conditions: []Condition{{Column: m[2], Value: m[3]}},
+			Operator:   "AND",
+		},
 	}, nil
 }
 
@@ -311,8 +535,30 @@ func (s *DeleteStmt) Exec(d *db.Database) error {
 		return err
 	}
 
-	count, err := t.Delete(s.WhereColumn, s.WhereValue)
-	if err != nil {
+	// Get matching rows
+	allRows := t.SelectAll()
+	var matchingRows []map[string]string
+	for _, row := range allRows {
+		if s.Where.Evaluate(row) {
+			matchingRows = append(matchingRows, row)
+		}
+	}
+
+	if len(matchingRows) == 0 {
+		fmt.Println("0 row(s) deleted.")
+		return nil
+	}
+
+	pkName := t.PrimaryKey()
+	count := 0
+
+	for _, row := range matchingRows {
+		pk := row[pkName]
+		t.Index.Delete(pk)
+		count++
+	}
+
+	if err := t.Save(); err != nil {
 		return err
 	}
 
