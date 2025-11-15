@@ -59,10 +59,40 @@ type SelectStmt struct {
 	OrderByColumn    string
 	OrderByDirection string
 	Limit            int
+	AggregateFunc    string // COUNT, SUM, AVG
+	AggregateColumn  string // column name or "*" for COUNT(*)
 }
 
 func parseSelect(query string) (Statement, error) {
-	// SELECT * FROM table [WHERE col=val] [ORDER BY col [ASC|DESC]] [LIMIT n]
+	queryUpper := strings.ToUpper(query)
+
+	// Check for aggregate functions: COUNT, SUM, AVG
+	if strings.Contains(queryUpper, "COUNT(") || strings.Contains(queryUpper, "SUM(") || strings.Contains(queryUpper, "AVG(") {
+		// SELECT COUNT(*) FROM table [WHERE col=val]
+		// SELECT SUM(column) FROM table [WHERE col=val]
+		// SELECT AVG(column) FROM table [WHERE col=val]
+		re := regexp.MustCompile(`(?i)SELECT\s+(COUNT|SUM|AVG)\s*\(\s*([a-zA-Z0-9_*]+)\s*\)\s+FROM\s+([a-zA-Z0-9_]+)(?:\s+WHERE\s+([a-zA-Z0-9_]+)\s*=\s*"?([^"]+)"?)?;?`)
+		m := re.FindStringSubmatch(query)
+		if len(m) < 4 {
+			return nil, errors.New("invalid aggregate SELECT syntax")
+		}
+
+		stmt := &SelectStmt{
+			Table:           m[3],
+			AggregateFunc:   strings.ToUpper(m[1]),
+			AggregateColumn: m[2],
+		}
+
+		if len(m) >= 6 && m[4] != "" {
+			stmt.HasWhere = true
+			stmt.Column = m[4]
+			stmt.Value = m[5]
+		}
+
+		return stmt, nil
+	}
+
+	// Regular SELECT * FROM table [WHERE col=val] [ORDER BY col [ASC|DESC]] [LIMIT n]
 	re := regexp.MustCompile(`(?i)SELECT\s+\*\s+FROM\s+([a-zA-Z0-9_]+)(?:\s+WHERE\s+([a-zA-Z0-9_]+)\s*=\s*"?([^"]+)"?)?(?:\s+ORDER\s+BY\s+([a-zA-Z0-9_]+)(?:\s+(ASC|DESC))?)?(?:\s+LIMIT\s+(\d+))?;?`)
 	m := re.FindStringSubmatch(query)
 	if len(m) < 2 {
@@ -117,6 +147,11 @@ func (s *SelectStmt) Exec(d *db.Database) error {
 		return err
 	}
 
+	// Handle aggregate functions
+	if s.AggregateFunc != "" {
+		return s.execAggregate(rows)
+	}
+
 	if s.OrderByColumn != "" {
 		sortRows(rows, s.OrderByColumn, s.OrderByDirection)
 	}
@@ -132,6 +167,60 @@ func (s *SelectStmt) Exec(d *db.Database) error {
 
 	util.PrintTable(cols, rows)
 	return nil
+}
+
+func (s *SelectStmt) execAggregate(rows []map[string]string) error {
+	switch s.AggregateFunc {
+	case "COUNT":
+		fmt.Printf("%d\n", len(rows))
+		return nil
+
+	case "SUM":
+		if s.AggregateColumn == "*" {
+			return errors.New("SUM requires a column name, not *")
+		}
+		var sum float64
+		for _, row := range rows {
+			val, exists := row[s.AggregateColumn]
+			if !exists {
+				return fmt.Errorf("column '%s' not found", s.AggregateColumn)
+			}
+			num, err := parseNumber(val)
+			if err != nil {
+				return fmt.Errorf("cannot SUM non-numeric value: %s", val)
+			}
+			sum += num
+		}
+		fmt.Printf("%.2f\n", sum)
+		return nil
+
+	case "AVG":
+		if s.AggregateColumn == "*" {
+			return errors.New("AVG requires a column name, not *")
+		}
+		if len(rows) == 0 {
+			fmt.Println("0")
+			return nil
+		}
+		var sum float64
+		for _, row := range rows {
+			val, exists := row[s.AggregateColumn]
+			if !exists {
+				return fmt.Errorf("column '%s' not found", s.AggregateColumn)
+			}
+			num, err := parseNumber(val)
+			if err != nil {
+				return fmt.Errorf("cannot AVG non-numeric value: %s", val)
+			}
+			sum += num
+		}
+		avg := sum / float64(len(rows))
+		fmt.Printf("%.2f\n", avg)
+		return nil
+
+	default:
+		return fmt.Errorf("unknown aggregate function: %s", s.AggregateFunc)
+	}
 }
 
 type UpdateStmt struct {
