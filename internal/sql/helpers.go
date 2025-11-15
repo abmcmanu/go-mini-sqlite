@@ -6,8 +6,9 @@ import (
 )
 
 type Condition struct {
-	Column string
-	Value  string
+	Column   string
+	Operator string // "=" or "LIKE"
+	Value    string
 }
 
 type WhereClause struct {
@@ -22,7 +23,7 @@ func (w *WhereClause) Evaluate(row map[string]string) bool {
 
 	if w.Operator == "AND" {
 		for _, cond := range w.Conditions {
-			if row[cond.Column] != cond.Value {
+			if !evaluateCondition(row[cond.Column], cond.Operator, cond.Value) {
 				return false
 			}
 		}
@@ -31,11 +32,60 @@ func (w *WhereClause) Evaluate(row map[string]string) bool {
 
 	// OR operator
 	for _, cond := range w.Conditions {
-		if row[cond.Column] == cond.Value {
+		if evaluateCondition(row[cond.Column], cond.Operator, cond.Value) {
 			return true
 		}
 	}
 	return false
+}
+
+func evaluateCondition(rowValue, operator, condValue string) bool {
+	switch operator {
+	case "=":
+		return rowValue == condValue
+	case "LIKE":
+		return matchPattern(rowValue, condValue)
+	default:
+		return false
+	}
+}
+
+func matchPattern(value, pattern string) bool {
+	// Convert SQL LIKE pattern to regex-like matching
+	// % = any number of characters
+	// _ = exactly one character
+
+	i, j := 0, 0
+	valueLen, patternLen := len(value), len(pattern)
+	starIdx, matchIdx := -1, 0
+	for i < valueLen {
+		if j < patternLen {
+			if pattern[j] == '%' {
+				starIdx = j
+				matchIdx = i
+				j++
+				continue
+			} else if pattern[j] == '_' || pattern[j] == value[i] {
+				i++
+				j++
+				continue
+			}
+		}
+
+		if starIdx != -1 {
+			j = starIdx + 1
+			matchIdx++
+			i = matchIdx
+			continue
+		}
+		return false
+	}
+
+	for j < patternLen && pattern[j] == '%' {
+		j++
+	}
+
+	return j == patternLen
 }
 
 func splitAndTrim(s string) []string {
