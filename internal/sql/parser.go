@@ -23,6 +23,8 @@ func Parse(query string) (Statement, error) {
 		return parseCreateDatabase(query)
 	case strings.HasPrefix(queryUpper, "SHOW DATABASES"):
 		return parseShowDatabases(query)
+	case strings.HasPrefix(queryUpper, "SHOW TABLES"):
+		return parseShowTables(query)
 	case strings.HasPrefix(queryUpper, "USE "):
 		return parseUseDatabase(query)
 	case strings.HasPrefix(queryUpper, "CREATE TABLE"):
@@ -84,6 +86,37 @@ func (s *ShowDatabasesStmt) Exec(d *db.Database) error {
 	for _, dbName := range databases {
 		fmt.Printf("  - %s\n", dbName)
 	}
+	return nil
+}
+
+// ─── SHOW TABLES ───────────────────────────────────────────────────────────────
+type ShowTablesStmt struct{}
+
+func parseShowTables(query string) (Statement, error) {
+	re := regexp.MustCompile(`(?i)SHOW\s+TABLES;?`)
+	if !re.MatchString(query) {
+		return nil, errors.New("syntaxe SHOW TABLES invalide")
+	}
+	return &ShowTablesStmt{}, nil
+}
+
+func (s *ShowTablesStmt) Exec(d *db.Database) error {
+	tables, err := d.ListTables()
+	if err != nil {
+		return err
+	}
+
+	// Convertir la liste en format tableau pour PrintTable
+	var rows []map[string]string
+	for _, tableName := range tables {
+		rows = append(rows, map[string]string{
+			"Table": tableName,
+		})
+	}
+
+	// Affiche le tableau formaté
+	columns := []string{"Table"}
+	util.PrintTable(columns, rows)
 	return nil
 }
 

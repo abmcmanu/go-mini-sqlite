@@ -17,6 +17,7 @@ This is an **educational project** built to understand the core concepts behind 
   - `SHOW DATABASES`
   - `USE <database>`
   - `CREATE TABLE`
+  - `SHOW TABLES`
   - `INSERT INTO`
   - `SELECT ... WHERE ...`
   - `UPDATE ... SET ... WHERE ...`

@@ -126,3 +126,16 @@ func (d *Database) ListDatabases() ([]string, error) {
 	}
 	return databases, nil
 }
+
+// ListTables retourne la liste de toutes les tables de la base active
+func (d *Database) ListTables() ([]string, error) {
+	if d.ActiveDB == "" {
+		return nil, fmt.Errorf("aucune base sélectionnée — utilisez USE <database>")
+	}
+
+	var tables []string
+	for tableName := range d.Tables {
+		tables = append(tables, tableName)
+	}
+	return tables, nil
+}
