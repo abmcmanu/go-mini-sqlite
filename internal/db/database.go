@@ -139,3 +139,18 @@ func (d *Database) ListTables() ([]string, error) {
 	}
 	return tables, nil
 }
+
+func (d *Database) DropDatabase(name string) error {
+	dbPath := filepath.Join(d.RootPath, name)
+
+	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+		return fmt.Errorf("la base '%s' n'existe pas", name)
+	}
+
+	// Empêche la suppression de la base active
+	if d.ActiveDB == name {
+		return fmt.Errorf("impossible de supprimer la base active '%s' — utilisez d'abord USE pour changer de base", name)
+	}
+
+	return os.RemoveAll(dbPath)
+}

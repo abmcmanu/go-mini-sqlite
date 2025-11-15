@@ -14,6 +14,7 @@ This is an **educational project** built to understand the core concepts behind 
 - **Logical indexing** through a simplified **B+Tree**  
 - Supported SQL commands:
   - `CREATE DATABASE`
+  - `DROP DATABASE`
   - `SHOW DATABASES`
   - `USE <database>`
   - `CREATE TABLE`
