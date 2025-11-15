@@ -25,6 +25,8 @@ func Parse(query string) (Statement, error) {
 		return parseShowDatabases(query)
 	case strings.HasPrefix(queryUpper, "SHOW TABLES"):
 		return parseShowTables(query)
+	case strings.HasPrefix(queryUpper, "DESCRIBE "), strings.HasPrefix(queryUpper, "DESC "):
+		return parseDescribe(query)
 	case strings.HasPrefix(queryUpper, "USE "):
 		return parseUseDatabase(query)
 	case strings.HasPrefix(queryUpper, "CREATE TABLE"):
@@ -116,6 +118,69 @@ func (s *ShowTablesStmt) Exec(d *db.Database) error {
 
 	// Affiche le tableau formaté
 	columns := []string{"Table"}
+	util.PrintTable(columns, rows)
+	return nil
+}
+
+// ─── DESCRIBE / DESC ───────────────────────────────────────────────────────────
+type DescribeStmt struct {
+	Table string
+}
+
+func parseDescribe(query string) (Statement, error) {
+	re := regexp.MustCompile(`(?i)(?:DESCRIBE|DESC)\s+([a-zA-Z0-9_]+);?`)
+	m := re.FindStringSubmatch(query)
+	if len(m) < 2 {
+		return nil, errors.New("syntaxe DESCRIBE invalide")
+	}
+	return &DescribeStmt{Table: m[1]}, nil
+}
+
+func (s *DescribeStmt) Exec(d *db.Database) error {
+	if d.ActiveDB == "" {
+		return errors.New("aucune base sélectionnée — utilisez USE <database>")
+	}
+
+	t, err := d.GetTable(s.Table)
+	if err != nil {
+		return err
+	}
+
+	// Construit les lignes pour l'affichage du schéma
+	var rows []map[string]string
+	for _, col := range t.Schema.Columns {
+		row := map[string]string{
+			"Field": col.Name,
+			"Type":  string(col.Type),
+			"Key":   "",
+			"Null":  "YES",
+			"Extra": "",
+		}
+
+		// Primary Key
+		if col.PrimaryKey {
+			row["Key"] = "PRI"
+		}
+
+		// Not Null
+		if col.NotNull {
+			row["Null"] = "NO"
+		}
+
+		// Contraintes supplémentaires
+		var extras []string
+		if col.Unique {
+			extras = append(extras, "UNIQUE")
+		}
+		if len(extras) > 0 {
+			row["Extra"] = strings.Join(extras, ", ")
+		}
+
+		rows = append(rows, row)
+	}
+
+	// Affiche le tableau formaté
+	columns := []string{"Field", "Type", "Key", "Null", "Extra"}
 	util.PrintTable(columns, rows)
 	return nil
 }
