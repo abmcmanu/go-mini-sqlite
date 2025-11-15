@@ -22,7 +22,7 @@ This is an **educational project** built to understand the core concepts behind 
   - `SHOW TABLES`
   - `DESCRIBE / DESC <table>`
   - `INSERT INTO`
-  - `SELECT ... WHERE ... ORDER BY ...`
+  - `SELECT ... WHERE ... ORDER BY ... LIMIT ...`
   - `UPDATE ... SET ... WHERE ...`
   - `DELETE FROM ... WHERE ...`
 - **Data persistence** on disk via `.gob` files  

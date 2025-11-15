@@ -350,11 +350,12 @@ type SelectStmt struct {
 	HasWhere         bool
 	OrderByColumn    string
 	OrderByDirection string // "ASC" ou "DESC"
+	Limit            int    // Nombre de lignes à retourner (0 = pas de limite)
 }
 
 func parseSelect(query string) (Statement, error) {
-	// Supporte: SELECT * FROM table [WHERE col=val] [ORDER BY col [ASC|DESC]]
-	re := regexp.MustCompile(`(?i)SELECT\s+\*\s+FROM\s+([a-zA-Z0-9_]+)(?:\s+WHERE\s+([a-zA-Z0-9_]+)\s*=\s*"?([^"]+)"?)?(?:\s+ORDER\s+BY\s+([a-zA-Z0-9_]+)(?:\s+(ASC|DESC))?)?;?`)
+	// Supporte: SELECT * FROM table [WHERE col=val] [ORDER BY col [ASC|DESC]] [LIMIT n]
+	re := regexp.MustCompile(`(?i)SELECT\s+\*\s+FROM\s+([a-zA-Z0-9_]+)(?:\s+WHERE\s+([a-zA-Z0-9_]+)\s*=\s*"?([^"]+)"?)?(?:\s+ORDER\s+BY\s+([a-zA-Z0-9_]+)(?:\s+(ASC|DESC))?)?(?:\s+LIMIT\s+(\d+))?;?`)
 	m := re.FindStringSubmatch(query)
 	if len(m) < 2 {
 		return nil, errors.New("syntaxe SELECT invalide")
@@ -377,6 +378,15 @@ func parseSelect(query string) (Statement, error) {
 		} else {
 			stmt.OrderByDirection = "ASC" // Par défaut
 		}
+	}
+
+	// LIMIT clause
+	if len(m) >= 7 && m[6] != "" {
+		limit, err := parseNumber(m[6])
+		if err != nil || limit < 0 {
+			return nil, errors.New("LIMIT doit être un nombre positif")
+		}
+		stmt.Limit = int(limit)
 	}
 
 	return stmt, nil
@@ -405,6 +415,11 @@ func (s *SelectStmt) Exec(d *db.Database) error {
 	// Tri ORDER BY si spécifié
 	if s.OrderByColumn != "" {
 		sortRows(rows, s.OrderByColumn, s.OrderByDirection)
+	}
+
+	// Limitation LIMIT si spécifié
+	if s.Limit > 0 && s.Limit < len(rows) {
+		rows = rows[:s.Limit]
 	}
 
 	// Affiche le tableau avec colonnes dans l'ordre du schéma
