@@ -154,3 +154,22 @@ func (d *Database) DropDatabase(name string) error {
 
 	return os.RemoveAll(dbPath)
 }
+
+func (d *Database) DropTable(name string) error {
+	if d.ActiveDB == "" {
+		return fmt.Errorf("aucune base sélectionnée — utilisez USE <database>")
+	}
+
+	t, exists := d.Tables[name]
+	if !exists {
+		return fmt.Errorf("la table '%s' n'existe pas", name)
+	}
+
+	if err := os.Remove(t.FilePath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("erreur lors de la suppression du fichier: %v", err)
+	}
+
+	delete(d.Tables, name)
+
+	return nil
+}

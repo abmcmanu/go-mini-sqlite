@@ -33,6 +33,8 @@ func Parse(query string) (Statement, error) {
 		return parseUseDatabase(query)
 	case strings.HasPrefix(queryUpper, "CREATE TABLE"):
 		return parseCreateTable(query)
+	case strings.HasPrefix(queryUpper, "DROP TABLE"):
+		return parseDropTable(query)
 	case strings.HasPrefix(queryUpper, "INSERT INTO"):
 		return parseInsert(query)
 	case strings.HasPrefix(queryUpper, "SELECT"):
@@ -273,6 +275,29 @@ func (s *CreateTableStmt) Exec(d *db.Database) error {
 		return errors.New("aucune base sélectionnée — utilisez USE <database>")
 	}
 	return d.CreateTable(s.Name, db.Schema{Columns: s.Columns})
+}
+
+// ─── DROP TABLE ────────────────────────────────────────────────────────────────
+type DropTableStmt struct {
+	Name string
+}
+
+func parseDropTable(query string) (Statement, error) {
+	re := regexp.MustCompile(`(?i)DROP\s+TABLE\s+([a-zA-Z0-9_]+);?`)
+	m := re.FindStringSubmatch(query)
+	if len(m) < 2 {
+		return nil, errors.New("syntaxe DROP TABLE invalide")
+	}
+	return &DropTableStmt{Name: m[1]}, nil
+}
+
+func (s *DropTableStmt) Exec(d *db.Database) error {
+	err := d.DropTable(s.Name)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Table '%s' supprimée avec succès.\n", s.Name)
+	return nil
 }
 
 // ─── INSERT INTO ───────────────────────────────────────────────────────────────
