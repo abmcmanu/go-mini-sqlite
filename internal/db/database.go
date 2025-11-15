@@ -7,8 +7,6 @@ import (
 	"strings"
 )
 
-// Database représente le gestionnaire global qui pilote plusieurs bases
-// Chaque base est un dossier contenant des fichiers .tbl (tables)
 type Database struct {
 	RootPath string            // dossier principal ./data
 	ActiveDB string            // nom de la base de données courante
@@ -112,4 +110,19 @@ func (d *Database) GetTable(name string) (*Table, error) {
 		return nil, fmt.Errorf("table '%s' introuvable", name)
 	}
 	return t, nil
+}
+
+func (d *Database) ListDatabases() ([]string, error) {
+	entries, err := os.ReadDir(d.RootPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var databases []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			databases = append(databases, entry.Name())
+		}
+	}
+	return databases, nil
 }

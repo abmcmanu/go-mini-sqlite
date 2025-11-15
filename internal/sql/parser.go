@@ -21,6 +21,8 @@ func Parse(query string) (Statement, error) {
 	switch {
 	case strings.HasPrefix(queryUpper, "CREATE DATABASE"):
 		return parseCreateDatabase(query)
+	case strings.HasPrefix(queryUpper, "SHOW DATABASES"):
+		return parseShowDatabases(query)
 	case strings.HasPrefix(queryUpper, "USE "):
 		return parseUseDatabase(query)
 	case strings.HasPrefix(queryUpper, "CREATE TABLE"):
@@ -53,6 +55,36 @@ func parseCreateDatabase(query string) (Statement, error) {
 
 func (s *CreateDatabaseStmt) Exec(d *db.Database) error {
 	return d.CreateDatabase(s.Name)
+}
+
+// ─── SHOW DATABASES ────────────────────────────────────────────────────────────
+type ShowDatabasesStmt struct{}
+
+func parseShowDatabases(query string) (Statement, error) {
+	re := regexp.MustCompile(`(?i)SHOW\s+DATABASES;?`)
+	if !re.MatchString(query) {
+		return nil, errors.New("syntaxe SHOW DATABASES invalide")
+	}
+	return &ShowDatabasesStmt{}, nil
+}
+
+func (s *ShowDatabasesStmt) Exec(d *db.Database) error {
+	databases, err := d.ListDatabases()
+	if err != nil {
+		return err
+	}
+
+	if len(databases) == 0 {
+		fmt.Println("Aucune base de données trouvée.")
+		return nil
+	}
+
+	// Affiche la liste des bases de données
+	fmt.Println("Bases de données:")
+	for _, dbName := range databases {
+		fmt.Printf("  - %s\n", dbName)
+	}
+	return nil
 }
 
 // ─── USE DATABASE ──────────────────────────────────────────────────────────────
