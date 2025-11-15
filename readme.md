@@ -22,7 +22,7 @@ This is an **educational project** built to understand the core concepts behind 
   - `SHOW TABLES`
   - `DESCRIBE / DESC <table>`
   - `INSERT INTO`
-  - `SELECT ... WHERE ...`
+  - `SELECT ... WHERE ... ORDER BY ...`
   - `UPDATE ... SET ... WHERE ...`
   - `DELETE FROM ... WHERE ...`
 - **Data persistence** on disk via `.gob` files  
@@ -61,7 +61,7 @@ This is an **educational project** built to understand the core concepts behind 
 ### ⚠️ Current Limitations
 
 - The parser does **not** support multiline statements or comments
-- No support yet for `JOIN` or `ORDER BY`
+- No support yet for `JOIN`
 - The B+Tree is **logical and simplified**, not optimized for large databases
 - The shell only supports **single-line commands ending with `;`**
 - `UPDATE` and `DELETE` require a `WHERE` clause

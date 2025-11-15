@@ -344,25 +344,41 @@ func (s *InsertStmt) Exec(d *db.Database) error {
 
 // ─── SELECT ─────────────────────────────────────────────────────────────────────
 type SelectStmt struct {
-	Table    string
-	Column   string
-	Value    string
-	HasWhere bool
+	Table            string
+	Column           string
+	Value            string
+	HasWhere         bool
+	OrderByColumn    string
+	OrderByDirection string // "ASC" ou "DESC"
 }
 
 func parseSelect(query string) (Statement, error) {
-	re := regexp.MustCompile(`(?i)SELECT\s+\*\s+FROM\s+([a-zA-Z0-9_]+)(?:\s+WHERE\s+([a-zA-Z0-9_]+)\s*=\s*"?([^"]+)"?)?;?`)
+	// Supporte: SELECT * FROM table [WHERE col=val] [ORDER BY col [ASC|DESC]]
+	re := regexp.MustCompile(`(?i)SELECT\s+\*\s+FROM\s+([a-zA-Z0-9_]+)(?:\s+WHERE\s+([a-zA-Z0-9_]+)\s*=\s*"?([^"]+)"?)?(?:\s+ORDER\s+BY\s+([a-zA-Z0-9_]+)(?:\s+(ASC|DESC))?)?;?`)
 	m := re.FindStringSubmatch(query)
 	if len(m) < 2 {
 		return nil, errors.New("syntaxe SELECT invalide")
 	}
 
 	stmt := &SelectStmt{Table: m[1]}
+
+	// WHERE clause
 	if len(m) >= 4 && m[2] != "" {
 		stmt.HasWhere = true
 		stmt.Column = m[2]
 		stmt.Value = m[3]
 	}
+
+	// ORDER BY clause
+	if len(m) >= 5 && m[4] != "" {
+		stmt.OrderByColumn = m[4]
+		if len(m) >= 6 && m[5] != "" {
+			stmt.OrderByDirection = strings.ToUpper(m[5])
+		} else {
+			stmt.OrderByDirection = "ASC" // Par défaut
+		}
+	}
+
 	return stmt, nil
 }
 
@@ -386,7 +402,12 @@ func (s *SelectStmt) Exec(d *db.Database) error {
 		return err
 	}
 
-	// Affiche le tableau avec colonnes dans l’ordre du schéma
+	// Tri ORDER BY si spécifié
+	if s.OrderByColumn != "" {
+		sortRows(rows, s.OrderByColumn, s.OrderByDirection)
+	}
+
+	// Affiche le tableau avec colonnes dans l'ordre du schéma
 	var cols []string
 	for _, c := range t.Schema.Columns {
 		cols = append(cols, c.Name)
@@ -505,4 +526,48 @@ func splitAndTrim(s string) []string {
 		parts[i] = strings.TrimSpace(parts[i])
 	}
 	return parts
+}
+
+// sortRows trie les lignes selon une colonne et une direction (ASC/DESC)
+func sortRows(rows []map[string]string, column, direction string) {
+	// Fonction de comparaison
+	less := func(i, j int) bool {
+		valI := rows[i][column]
+		valJ := rows[j][column]
+
+		// Tri numérique si les deux valeurs sont des nombres
+		numI, errI := parseNumber(valI)
+		numJ, errJ := parseNumber(valJ)
+
+		if errI == nil && errJ == nil {
+			// Comparaison numérique
+			if direction == "DESC" {
+				return numI > numJ
+			}
+			return numI < numJ
+		}
+
+		// Comparaison alphabétique
+		if direction == "DESC" {
+			return valI > valJ
+		}
+		return valI < valJ
+	}
+
+	// Tri en place avec sort.Slice (importé via "sort")
+	// On doit importer "sort" en haut du fichier
+	for i := 0; i < len(rows)-1; i++ {
+		for j := i + 1; j < len(rows); j++ {
+			if !less(i, j) {
+				rows[i], rows[j] = rows[j], rows[i]
+			}
+		}
+	}
+}
+
+// parseNumber tente de convertir une chaîne en nombre
+func parseNumber(s string) (float64, error) {
+	var num float64
+	_, err := fmt.Sscanf(s, "%f", &num)
+	return num, err
 }
