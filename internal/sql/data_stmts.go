@@ -85,7 +85,7 @@ func parseSelect(query string) (Statement, error) {
 
 	if len(m) >= 4 && m[2] != "" {
 		stmt.Where = &WhereClause{
-			Conditions: []Condition{{Column: m[2], Value: m[3]}},
+			Conditions: []Condition{{Column: m[2], Operator: "=", Value: m[3]}},
 			Operator:   "AND",
 		}
 	}
@@ -153,7 +153,7 @@ func parseAggregateSelect(query string) (Statement, error) {
 
 	if len(m) >= 6 && m[4] != "" {
 		stmt.Where = &WhereClause{
-			Conditions: []Condition{{Column: m[4], Value: m[5]}},
+			Conditions: []Condition{{Column: m[4], Operator: "=", Value: m[5]}},
 			Operator:   "AND",
 		}
 	}
@@ -227,14 +227,29 @@ func parseWhereClause(whereStr string) (*WhereClause, error) {
 	var conditions []Condition
 	for _, part := range conditionParts {
 		part = strings.TrimSpace(part)
-		re := regexp.MustCompile(`([a-zA-Z0-9_]+)\s*=\s*"?([^"]+)"?`)
-		m := re.FindStringSubmatch(part)
+
+		// Try LIKE first
+		reLike := regexp.MustCompile(`(?i)([a-zA-Z0-9_]+)\s+LIKE\s+"?([^"]+)"?`)
+		m := reLike.FindStringSubmatch(part)
+		if len(m) >= 3 {
+			conditions = append(conditions, Condition{
+				Column:   m[1],
+				Operator: "LIKE",
+				Value:    strings.Trim(m[2], `"`),
+			})
+			continue
+		}
+
+		// Try = operator
+		reEq := regexp.MustCompile(`([a-zA-Z0-9_]+)\s*=\s*"?([^"]+)"?`)
+		m = reEq.FindStringSubmatch(part)
 		if len(m) < 3 {
 			return nil, fmt.Errorf("invalid condition: %s", part)
 		}
 		conditions = append(conditions, Condition{
-			Column: m[1],
-			Value:  strings.Trim(m[2], `"`),
+			Column:   m[1],
+			Operator: "=",
+			Value:    strings.Trim(m[2], `"`),
 		})
 	}
 
@@ -413,7 +428,7 @@ func parseUpdate(query string) (Statement, error) {
 		Table:   table,
 		Updates: updates,
 		Where: &WhereClause{
-			Conditions: []Condition{{Column: m[3], Value: m[4]}},
+			Conditions: []Condition{{Column: m[3], Operator: "=", Value: m[4]}},
 			Operator:   "AND",
 		},
 	}, nil
@@ -519,7 +534,7 @@ func parseDelete(query string) (Statement, error) {
 	return &DeleteStmt{
 		Table: m[1],
 		Where: &WhereClause{
-			Conditions: []Condition{{Column: m[2], Value: m[3]}},
+			Conditions: []Condition{{Column: m[2], Operator: "=", Value: m[3]}},
 			Operator:   "AND",
 		},
 	}, nil
