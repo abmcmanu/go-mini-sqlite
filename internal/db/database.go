@@ -8,12 +8,11 @@ import (
 )
 
 type Database struct {
-	RootPath string            // dossier principal ./data
-	ActiveDB string            // nom de la base de données courante
-	Tables   map[string]*Table // tables chargées en mémoire pour la base active
+	RootPath string
+	ActiveDB string
+	Tables   map[string]*Table
 }
 
-// NewDatabase initialise le gestionnaire racine (ex: ./data)
 func NewDatabase(root string) (*Database, error) {
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return nil, err
@@ -24,20 +23,18 @@ func NewDatabase(root string) (*Database, error) {
 	}, nil
 }
 
-// CreateDatabase crée physiquement un dossier pour une nouvelle base
 func (d *Database) CreateDatabase(name string) error {
 	dbPath := filepath.Join(d.RootPath, name)
 	if _, err := os.Stat(dbPath); !os.IsNotExist(err) {
-		return fmt.Errorf("la base '%s' existe déjà", name)
+		return fmt.Errorf("database '%s' already exists", name)
 	}
 	return os.MkdirAll(dbPath, 0o755)
 }
 
-// SetActiveDB permet de changer la base de données courante (USE <db>)
 func (d *Database) SetActiveDB(name string) error {
 	dbPath := filepath.Join(d.RootPath, name)
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		return fmt.Errorf("database '%s' inexistante", name)
+		return fmt.Errorf("database '%s' does not exist", name)
 	}
 
 	d.ActiveDB = name
@@ -59,15 +56,13 @@ func (d *Database) SetActiveDB(name string) error {
 	return nil
 }
 
-// CreateTable crée et enregistre une table dans la base active
 func (d *Database) CreateTable(name string, schema Schema) error {
 	if d.ActiveDB == "" {
-		return fmt.Errorf("aucune base active (faites USE <db>)")
+		return fmt.Errorf("no active database (use USE <db>)")
 	}
 
-	// vérifie doublon
 	if _, exists := d.Tables[name]; exists {
-		return fmt.Errorf("table '%s' existe déjà", name)
+		return fmt.Errorf("table '%s' already exists", name)
 	}
 
 	dbPath := filepath.Join(d.RootPath, d.ActiveDB)
@@ -87,19 +82,17 @@ func (d *Database) CreateTable(name string, schema Schema) error {
 	return t.Save()
 }
 
-// Table retourne une table par son nom si elle existe
 func (d *Database) Table(name string) (*Table, error) {
 	t, ok := d.Tables[name]
 	if !ok {
-		return nil, fmt.Errorf("table '%s' introuvable", name)
+		return nil, fmt.Errorf("table '%s' not found", name)
 	}
 	return t, nil
 }
 
-// ActivePath retourne le chemin absolu de la base active
 func (d *Database) ActivePath() (string, error) {
 	if d.ActiveDB == "" {
-		return "", fmt.Errorf("aucune base active")
+		return "", fmt.Errorf("no active database")
 	}
 	return filepath.Join(d.RootPath, d.ActiveDB), nil
 }
@@ -107,7 +100,7 @@ func (d *Database) ActivePath() (string, error) {
 func (d *Database) GetTable(name string) (*Table, error) {
 	t, ok := d.Tables[name]
 	if !ok {
-		return nil, fmt.Errorf("table '%s' introuvable", name)
+		return nil, fmt.Errorf("table '%s' not found", name)
 	}
 	return t, nil
 }
@@ -127,10 +120,9 @@ func (d *Database) ListDatabases() ([]string, error) {
 	return databases, nil
 }
 
-// ListTables retourne la liste de toutes les tables de la base active
 func (d *Database) ListTables() ([]string, error) {
 	if d.ActiveDB == "" {
-		return nil, fmt.Errorf("aucune base sélectionnée — utilisez USE <database>")
+		return nil, fmt.Errorf("no database selected — use USE <database>")
 	}
 
 	var tables []string
@@ -144,12 +136,11 @@ func (d *Database) DropDatabase(name string) error {
 	dbPath := filepath.Join(d.RootPath, name)
 
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		return fmt.Errorf("la base '%s' n'existe pas", name)
+		return fmt.Errorf("database '%s' does not exist", name)
 	}
 
-	// Empêche la suppression de la base active
 	if d.ActiveDB == name {
-		return fmt.Errorf("impossible de supprimer la base active '%s' — utilisez d'abord USE pour changer de base", name)
+		return fmt.Errorf("cannot drop active database '%s' — use USE to switch first", name)
 	}
 
 	return os.RemoveAll(dbPath)
@@ -157,16 +148,16 @@ func (d *Database) DropDatabase(name string) error {
 
 func (d *Database) DropTable(name string) error {
 	if d.ActiveDB == "" {
-		return fmt.Errorf("aucune base sélectionnée — utilisez USE <database>")
+		return fmt.Errorf("no database selected — use USE <database>")
 	}
 
 	t, exists := d.Tables[name]
 	if !exists {
-		return fmt.Errorf("la table '%s' n'existe pas", name)
+		return fmt.Errorf("table '%s' does not exist", name)
 	}
 
 	if err := os.Remove(t.FilePath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("erreur lors de la suppression du fichier: %v", err)
+		return fmt.Errorf("error deleting file: %v", err)
 	}
 
 	delete(d.Tables, name)

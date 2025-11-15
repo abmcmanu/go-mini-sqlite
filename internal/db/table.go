@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 )
 
-// -------- Types & structures --------
-
 type ColType string
 
 const (
@@ -32,12 +30,9 @@ type Table struct {
 	Name     string
 	Schema   Schema
 	FilePath string
-	Index    *BPTree // B+ Tree en mémoire
+	Index    *BPTree
 }
 
-// -------- Gestion de la table --------
-
-// Save enregistre la table sur disque (schéma + lignes)
 func (t *Table) Save() error {
 	if err := os.MkdirAll(filepath.Dir(t.FilePath), 0755); err != nil {
 		return err
@@ -61,7 +56,6 @@ func (t *Table) Save() error {
 	return enc.Encode(&data)
 }
 
-// LoadTable recharge une table depuis un fichier gob
 func LoadTable(path string) (*Table, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -95,7 +89,6 @@ func LoadTable(path string) (*Table, error) {
 	return table, nil
 }
 
-// PrimaryKey retourne le nom de la clé primaire
 func (t *Table) PrimaryKey() string {
 	for _, c := range t.Schema.Columns {
 		if c.PrimaryKey {
@@ -105,26 +98,21 @@ func (t *Table) PrimaryKey() string {
 	return ""
 }
 
-// -------- Opérations SQL --------
-
-// Insert ajoute une ligne avec vérification des contraintes
 func (t *Table) Insert(values map[string]string) error {
-	// Vérifie que toutes les colonnes existent et contraintes NOT NULL / UNIQUE
 	cols := t.Schema.ColumnsMap()
 	for name, col := range cols {
 		v := values[name]
 		if col.NotNull && v == "" {
-			return fmt.Errorf("colonne '%s' ne peut pas être NULL", name)
+			return fmt.Errorf("column '%s' cannot be NULL", name)
 		}
 		if col.Unique {
 			rows, _ := t.SelectWhere(name, v)
 			if len(rows) > 0 {
-				return fmt.Errorf("valeur '%s' déjà présente pour colonne UNIQUE '%s'", v, name)
+				return fmt.Errorf("value '%s' already exists for UNIQUE column '%s'", v, name)
 			}
 		}
 	}
 
-	// Gère la clé primaire automatique si nécessaire
 	pkName := t.PrimaryKey()
 	pkVal := values[pkName]
 	if pkVal == "" {
@@ -132,14 +120,11 @@ func (t *Table) Insert(values map[string]string) error {
 		values[pkName] = pkVal
 	}
 
-	// Insère dans l’index mémoire
 	t.Index.Insert(pkVal, values)
 
-	// Sauvegarde sur disque
 	return t.Save()
 }
 
-// SelectWhere filtre sur une colonne avec une valeur
 func (t *Table) SelectWhere(column, value string) ([]map[string]string, error) {
 	all := t.Index.GetAll()
 	var results []map[string]string
@@ -151,47 +136,39 @@ func (t *Table) SelectWhere(column, value string) ([]map[string]string, error) {
 	return results, nil
 }
 
-// SelectAll retourne toutes les lignes
 func (t *Table) SelectAll() []map[string]string {
 	return t.Index.GetAll()
 }
 
-// Update modifie les lignes correspondant à une condition WHERE
 func (t *Table) Update(whereColumn, whereValue string, updates map[string]string) (int, error) {
-	// Récupère toutes les lignes qui correspondent à la clause WHERE
 	rows, err := t.SelectWhere(whereColumn, whereValue)
 	if err != nil {
 		return 0, err
 	}
 
 	if len(rows) == 0 {
-		return 0, nil // Aucune ligne à mettre à jour
+		return 0, nil
 	}
 
-	// Vérifie les contraintes pour les nouvelles valeurs
 	cols := t.Schema.ColumnsMap()
 	pkName := t.PrimaryKey()
 
 	for colName, newVal := range updates {
 		col, exists := cols[colName]
 		if !exists {
-			return 0, fmt.Errorf("colonne '%s' n'existe pas", colName)
+			return 0, fmt.Errorf("column '%s' does not exist", colName)
 		}
 
-		// Interdit la modification de la clé primaire
 		if colName == pkName {
-			return 0, fmt.Errorf("impossible de modifier la clé primaire '%s'", pkName)
+			return 0, fmt.Errorf("cannot modify primary key '%s'", pkName)
 		}
 
-		// Vérifie NOT NULL
 		if col.NotNull && newVal == "" {
-			return 0, fmt.Errorf("colonne '%s' ne peut pas être NULL", colName)
+			return 0, fmt.Errorf("column '%s' cannot be NULL", colName)
 		}
 
-		// Vérifie UNIQUE
 		if col.Unique && newVal != "" {
 			existing, _ := t.SelectWhere(colName, newVal)
-			// Autorise la mise à jour si la valeur existe déjà dans la ligne qu'on modifie
 			for _, ex := range existing {
 				isCurrentRow := false
 				for _, row := range rows {
@@ -201,33 +178,28 @@ func (t *Table) Update(whereColumn, whereValue string, updates map[string]string
 					}
 				}
 				if !isCurrentRow {
-					return 0, fmt.Errorf("valeur '%s' déjà présente pour colonne UNIQUE '%s'", newVal, colName)
+					return 0, fmt.Errorf("value '%s' already exists for UNIQUE column '%s'", newVal, colName)
 				}
 			}
 		}
 	}
 
-	// Applique les mises à jour
 	count := 0
 	for _, row := range rows {
 		pk := row[pkName]
-		// Récupère la ligne actuelle depuis l'index
 		currentRow, found := t.Index.Get(pk)
 		if !found {
 			continue
 		}
 
-		// Applique les modifications
 		for colName, newVal := range updates {
 			currentRow[colName] = newVal
 		}
 
-		// Met à jour dans l'index (Insert remplace si la clé existe)
 		t.Index.Insert(pk, currentRow)
 		count++
 	}
 
-	// Sauvegarde sur disque
 	if err := t.Save(); err != nil {
 		return 0, err
 	}
@@ -235,29 +207,25 @@ func (t *Table) Update(whereColumn, whereValue string, updates map[string]string
 	return count, nil
 }
 
-// Delete supprime les lignes correspondant à une condition WHERE
 func (t *Table) Delete(whereColumn, whereValue string) (int, error) {
-	// Récupère toutes les lignes qui correspondent à la clause WHERE
 	rows, err := t.SelectWhere(whereColumn, whereValue)
 	if err != nil {
 		return 0, err
 	}
 
 	if len(rows) == 0 {
-		return 0, nil // Aucune ligne à supprimer
+		return 0, nil
 	}
 
 	pkName := t.PrimaryKey()
 	count := 0
 
-	// Supprime chaque ligne de l'index
 	for _, row := range rows {
 		pk := row[pkName]
 		t.Index.Delete(pk)
 		count++
 	}
 
-	// Sauvegarde sur disque
 	if err := t.Save(); err != nil {
 		return 0, err
 	}
@@ -265,9 +233,7 @@ func (t *Table) Delete(whereColumn, whereValue string) (int, error) {
 	return count, nil
 }
 
-// -------- Helpers --------
-
-// ColumnsMap retourne un map[name]Column pour lookup rapide
+// ColumnsMap returns a map of column names to Column for fast lookup
 func (s Schema) ColumnsMap() map[string]Column {
 	m := make(map[string]Column)
 	for _, c := range s.Columns {
@@ -276,7 +242,6 @@ func (s Schema) ColumnsMap() map[string]Column {
 	return m
 }
 
-// convertSchema convertit slice de Column en Schema
 func convertSchema(cols []Column) Schema {
 	return Schema{Columns: cols}
 }
