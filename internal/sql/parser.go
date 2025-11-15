@@ -10,12 +10,10 @@ import (
 	"github.com/abmcmanu/go-mini-sqlite/internal/util"
 )
 
-// Statement représente une commande SQL analysée et prête à exécuter
 type Statement interface {
 	Exec(database *db.Database) error
 }
 
-// Parse analyse la commande SQL et retourne un Statement prêt à exécuter
 func Parse(query string) (Statement, error) {
 	query = strings.TrimSpace(query)
 	queryUpper := strings.ToUpper(query)
@@ -31,12 +29,15 @@ func Parse(query string) (Statement, error) {
 		return parseInsert(query)
 	case strings.HasPrefix(queryUpper, "SELECT"):
 		return parseSelect(query)
+	case strings.HasPrefix(queryUpper, "UPDATE"):
+		return parseUpdate(query)
+	case strings.HasPrefix(queryUpper, "DELETE FROM"):
+		return parseDelete(query)
 	default:
 		return nil, fmt.Errorf("commande SQL non reconnue: %s", query)
 	}
 }
 
-// ─── CREATE DATABASE ───────────────────────────────────────────────────────────
 type CreateDatabaseStmt struct {
 	Name string
 }
@@ -212,6 +213,108 @@ func (s *SelectStmt) Exec(d *db.Database) error {
 	}
 
 	util.PrintTable(cols, rows)
+	return nil
+}
+
+// ─── UPDATE ─────────────────────────────────────────────────────────────────────
+type UpdateStmt struct {
+	Table       string
+	Updates     map[string]string
+	WhereColumn string
+	WhereValue  string
+}
+
+func parseUpdate(query string) (Statement, error) {
+	// UPDATE table SET col1=val1, col2=val2 WHERE column=value
+	re := regexp.MustCompile(`(?i)UPDATE\s+([a-zA-Z0-9_]+)\s+SET\s+(.+?)\s+WHERE\s+([a-zA-Z0-9_]+)\s*=\s*"?([^";]+)"?;?`)
+	m := re.FindStringSubmatch(query)
+	if len(m) < 5 {
+		return nil, errors.New("syntaxe UPDATE invalide (attendu: UPDATE table SET col=val WHERE col=val)")
+	}
+
+	table := m[1]
+	setPart := m[2]
+	whereCol := m[3]
+	whereVal := m[4]
+
+	// Parse les colonnes à mettre à jour (col1=val1, col2=val2)
+	updates := make(map[string]string)
+	assignments := splitAndTrim(setPart)
+	for _, assign := range assignments {
+		parts := strings.Split(assign, "=")
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("assignation invalide: %s", assign)
+		}
+		colName := strings.TrimSpace(parts[0])
+		colValue := strings.Trim(strings.TrimSpace(parts[1]), `"`)
+		updates[colName] = colValue
+	}
+
+	return &UpdateStmt{
+		Table:       table,
+		Updates:     updates,
+		WhereColumn: whereCol,
+		WhereValue:  whereVal,
+	}, nil
+}
+
+func (s *UpdateStmt) Exec(d *db.Database) error {
+	if d.ActiveDB == "" {
+		return errors.New("aucune base sélectionnée — utilisez USE <database>")
+	}
+
+	t, err := d.GetTable(s.Table)
+	if err != nil {
+		return err
+	}
+
+	count, err := t.Update(s.WhereColumn, s.WhereValue, s.Updates)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("%d ligne(s) mise(s) à jour.\n", count)
+	return nil
+}
+
+// ─── DELETE ─────────────────────────────────────────────────────────────────────
+type DeleteStmt struct {
+	Table       string
+	WhereColumn string
+	WhereValue  string
+}
+
+func parseDelete(query string) (Statement, error) {
+	// DELETE FROM table WHERE column=value
+	re := regexp.MustCompile(`(?i)DELETE\s+FROM\s+([a-zA-Z0-9_]+)\s+WHERE\s+([a-zA-Z0-9_]+)\s*=\s*"?([^";]+)"?;?`)
+	m := re.FindStringSubmatch(query)
+	if len(m) < 4 {
+		return nil, errors.New("syntaxe DELETE invalide (attendu: DELETE FROM table WHERE col=val)")
+	}
+
+	return &DeleteStmt{
+		Table:       m[1],
+		WhereColumn: m[2],
+		WhereValue:  m[3],
+	}, nil
+}
+
+func (s *DeleteStmt) Exec(d *db.Database) error {
+	if d.ActiveDB == "" {
+		return errors.New("aucune base sélectionnée — utilisez USE <database>")
+	}
+
+	t, err := d.GetTable(s.Table)
+	if err != nil {
+		return err
+	}
+
+	count, err := t.Delete(s.WhereColumn, s.WhereValue)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("%d ligne(s) supprimée(s).\n", count)
 	return nil
 }
 
