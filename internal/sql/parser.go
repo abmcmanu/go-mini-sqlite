@@ -21,6 +21,8 @@ func Parse(query string) (Statement, error) {
 	switch {
 	case strings.HasPrefix(queryUpper, "CREATE DATABASE"):
 		return parseCreateDatabase(query)
+	case strings.HasPrefix(queryUpper, "DROP DATABASE"):
+		return parseDropDatabase(query)
 	case strings.HasPrefix(queryUpper, "SHOW DATABASES"):
 		return parseShowDatabases(query)
 	case strings.HasPrefix(queryUpper, "SHOW TABLES"):
@@ -59,6 +61,29 @@ func parseCreateDatabase(query string) (Statement, error) {
 
 func (s *CreateDatabaseStmt) Exec(d *db.Database) error {
 	return d.CreateDatabase(s.Name)
+}
+
+// ─── DROP DATABASE ─────────────────────────────────────────────────────────────
+type DropDatabaseStmt struct {
+	Name string
+}
+
+func parseDropDatabase(query string) (Statement, error) {
+	re := regexp.MustCompile(`(?i)DROP\s+DATABASE\s+([a-zA-Z0-9_]+);?`)
+	m := re.FindStringSubmatch(query)
+	if len(m) < 2 {
+		return nil, errors.New("syntaxe DROP DATABASE invalide")
+	}
+	return &DropDatabaseStmt{Name: m[1]}, nil
+}
+
+func (s *DropDatabaseStmt) Exec(d *db.Database) error {
+	err := d.DropDatabase(s.Name)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Base de données '%s' supprimée avec succès.\n", s.Name)
+	return nil
 }
 
 // ─── SHOW DATABASES ────────────────────────────────────────────────────────────
