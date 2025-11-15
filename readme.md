@@ -1,7 +1,7 @@
 ### Mini Data Engine
 
-This mini relational database engine is written in **Go**, inspired by **SQLite**.  
-It allows you to **create databases and tables**, **insert**, and **select data**, all **in-memory** with **disk persistence**.
+This mini relational database engine is written in **Go**, inspired by **SQLite**.
+It allows you to **create databases and tables**, **insert**, **select**, **update**, and **delete data**, all **in-memory** with **disk persistence**.
 
 This is an **educational project** built to understand the core concepts behind **database management systems (DBMS)** such as indexing, table structures, schema design, SQL parsing, and persistence.
 
@@ -18,6 +18,8 @@ This is an **educational project** built to understand the core concepts behind 
   - `CREATE TABLE`
   - `INSERT INTO`
   - `SELECT ... WHERE ...`
+  - `UPDATE ... SET ... WHERE ...`
+  - `DELETE FROM ... WHERE ...`
 - **Data persistence** on disk via `.gob` files  
 - **Minimal interactive shell (REPL)**
 
@@ -51,12 +53,13 @@ This is an **educational project** built to understand the core concepts behind 
 
 ---
 
-### ⚠️ Current Limitations - current version 0.01
+### ⚠️ Current Limitations
 
-- The parser does **not** support multiline statements or comments  
-- No support yet for `UPDATE`, `DELETE`, `JOIN`, or `ORDER BY`  
-- The B+Tree is **logical and simplified**, not optimized for large databases  
+- The parser does **not** support multiline statements or comments
+- No support yet for `JOIN` or `ORDER BY`
+- The B+Tree is **logical and simplified**, not optimized for large databases
 - The shell only supports **single-line commands ending with `;`**
+- `UPDATE` and `DELETE` require a `WHERE` clause
 
 ---
 

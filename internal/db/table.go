@@ -156,6 +156,115 @@ func (t *Table) SelectAll() []map[string]string {
 	return t.Index.GetAll()
 }
 
+// Update modifie les lignes correspondant à une condition WHERE
+func (t *Table) Update(whereColumn, whereValue string, updates map[string]string) (int, error) {
+	// Récupère toutes les lignes qui correspondent à la clause WHERE
+	rows, err := t.SelectWhere(whereColumn, whereValue)
+	if err != nil {
+		return 0, err
+	}
+
+	if len(rows) == 0 {
+		return 0, nil // Aucune ligne à mettre à jour
+	}
+
+	// Vérifie les contraintes pour les nouvelles valeurs
+	cols := t.Schema.ColumnsMap()
+	pkName := t.PrimaryKey()
+
+	for colName, newVal := range updates {
+		col, exists := cols[colName]
+		if !exists {
+			return 0, fmt.Errorf("colonne '%s' n'existe pas", colName)
+		}
+
+		// Interdit la modification de la clé primaire
+		if colName == pkName {
+			return 0, fmt.Errorf("impossible de modifier la clé primaire '%s'", pkName)
+		}
+
+		// Vérifie NOT NULL
+		if col.NotNull && newVal == "" {
+			return 0, fmt.Errorf("colonne '%s' ne peut pas être NULL", colName)
+		}
+
+		// Vérifie UNIQUE
+		if col.Unique && newVal != "" {
+			existing, _ := t.SelectWhere(colName, newVal)
+			// Autorise la mise à jour si la valeur existe déjà dans la ligne qu'on modifie
+			for _, ex := range existing {
+				isCurrentRow := false
+				for _, row := range rows {
+					if ex[pkName] == row[pkName] {
+						isCurrentRow = true
+						break
+					}
+				}
+				if !isCurrentRow {
+					return 0, fmt.Errorf("valeur '%s' déjà présente pour colonne UNIQUE '%s'", newVal, colName)
+				}
+			}
+		}
+	}
+
+	// Applique les mises à jour
+	count := 0
+	for _, row := range rows {
+		pk := row[pkName]
+		// Récupère la ligne actuelle depuis l'index
+		currentRow, found := t.Index.Get(pk)
+		if !found {
+			continue
+		}
+
+		// Applique les modifications
+		for colName, newVal := range updates {
+			currentRow[colName] = newVal
+		}
+
+		// Met à jour dans l'index (Insert remplace si la clé existe)
+		t.Index.Insert(pk, currentRow)
+		count++
+	}
+
+	// Sauvegarde sur disque
+	if err := t.Save(); err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
+// Delete supprime les lignes correspondant à une condition WHERE
+func (t *Table) Delete(whereColumn, whereValue string) (int, error) {
+	// Récupère toutes les lignes qui correspondent à la clause WHERE
+	rows, err := t.SelectWhere(whereColumn, whereValue)
+	if err != nil {
+		return 0, err
+	}
+
+	if len(rows) == 0 {
+		return 0, nil // Aucune ligne à supprimer
+	}
+
+	pkName := t.PrimaryKey()
+	count := 0
+
+	// Supprime chaque ligne de l'index
+	for _, row := range rows {
+		pk := row[pkName]
+		t.Index.Delete(pk)
+		count++
+	}
+
+	// Sauvegarde sur disque
+	if err := t.Save(); err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
 // -------- Helpers --------
 
 // ColumnsMap retourne un map[name]Column pour lookup rapide
