@@ -44,7 +44,7 @@ func Parse(query string) (Statement, error) {
 	case strings.HasPrefix(queryUpper, "DELETE FROM"):
 		return parseDelete(query)
 	default:
-		return nil, fmt.Errorf("commande SQL non reconnue: %s", query)
+		return nil, fmt.Errorf("unknown SQL command: %s", query)
 	}
 }
 
@@ -56,7 +56,7 @@ func parseCreateDatabase(query string) (Statement, error) {
 	re := regexp.MustCompile(`(?i)CREATE\s+DATABASE\s+([a-zA-Z0-9_]+);?`)
 	m := re.FindStringSubmatch(query)
 	if len(m) < 2 {
-		return nil, errors.New("syntaxe CREATE DATABASE invalide")
+		return nil, errors.New("invalid CREATE DATABASE syntax")
 	}
 	return &CreateDatabaseStmt{Name: m[1]}, nil
 }
@@ -65,7 +65,6 @@ func (s *CreateDatabaseStmt) Exec(d *db.Database) error {
 	return d.CreateDatabase(s.Name)
 }
 
-// ─── DROP DATABASE ─────────────────────────────────────────────────────────────
 type DropDatabaseStmt struct {
 	Name string
 }
@@ -74,7 +73,7 @@ func parseDropDatabase(query string) (Statement, error) {
 	re := regexp.MustCompile(`(?i)DROP\s+DATABASE\s+([a-zA-Z0-9_]+);?`)
 	m := re.FindStringSubmatch(query)
 	if len(m) < 2 {
-		return nil, errors.New("syntaxe DROP DATABASE invalide")
+		return nil, errors.New("invalid DROP DATABASE syntax")
 	}
 	return &DropDatabaseStmt{Name: m[1]}, nil
 }
@@ -84,17 +83,16 @@ func (s *DropDatabaseStmt) Exec(d *db.Database) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Base de données '%s' supprimée avec succès.\n", s.Name)
+	fmt.Printf("Database '%s' deleted successfully.\n", s.Name)
 	return nil
 }
 
-// ─── SHOW DATABASES ────────────────────────────────────────────────────────────
 type ShowDatabasesStmt struct{}
 
 func parseShowDatabases(query string) (Statement, error) {
 	re := regexp.MustCompile(`(?i)SHOW\s+DATABASES;?`)
 	if !re.MatchString(query) {
-		return nil, errors.New("syntaxe SHOW DATABASES invalide")
+		return nil, errors.New("invalid SHOW DATABASES syntax")
 	}
 	return &ShowDatabasesStmt{}, nil
 }
@@ -106,25 +104,23 @@ func (s *ShowDatabasesStmt) Exec(d *db.Database) error {
 	}
 
 	if len(databases) == 0 {
-		fmt.Println("Aucune base de données trouvée.")
+		fmt.Println("No databases found.")
 		return nil
 	}
 
-	// Affiche la liste des bases de données
-	fmt.Println("Bases de données:")
+	fmt.Println("Databases:")
 	for _, dbName := range databases {
 		fmt.Printf("  - %s\n", dbName)
 	}
 	return nil
 }
 
-// ─── SHOW TABLES ───────────────────────────────────────────────────────────────
 type ShowTablesStmt struct{}
 
 func parseShowTables(query string) (Statement, error) {
 	re := regexp.MustCompile(`(?i)SHOW\s+TABLES;?`)
 	if !re.MatchString(query) {
-		return nil, errors.New("syntaxe SHOW TABLES invalide")
+		return nil, errors.New("invalid SHOW TABLES syntax")
 	}
 	return &ShowTablesStmt{}, nil
 }
@@ -135,7 +131,6 @@ func (s *ShowTablesStmt) Exec(d *db.Database) error {
 		return err
 	}
 
-	// Convertir la liste en format tableau pour PrintTable
 	var rows []map[string]string
 	for _, tableName := range tables {
 		rows = append(rows, map[string]string{
@@ -143,13 +138,11 @@ func (s *ShowTablesStmt) Exec(d *db.Database) error {
 		})
 	}
 
-	// Affiche le tableau formaté
 	columns := []string{"Table"}
 	util.PrintTable(columns, rows)
 	return nil
 }
 
-// ─── DESCRIBE / DESC ───────────────────────────────────────────────────────────
 type DescribeStmt struct {
 	Table string
 }
@@ -158,14 +151,14 @@ func parseDescribe(query string) (Statement, error) {
 	re := regexp.MustCompile(`(?i)(?:DESCRIBE|DESC)\s+([a-zA-Z0-9_]+);?`)
 	m := re.FindStringSubmatch(query)
 	if len(m) < 2 {
-		return nil, errors.New("syntaxe DESCRIBE invalide")
+		return nil, errors.New("invalid DESCRIBE syntax")
 	}
 	return &DescribeStmt{Table: m[1]}, nil
 }
 
 func (s *DescribeStmt) Exec(d *db.Database) error {
 	if d.ActiveDB == "" {
-		return errors.New("aucune base sélectionnée — utilisez USE <database>")
+		return errors.New("no database selected — use USE <database>")
 	}
 
 	t, err := d.GetTable(s.Table)
@@ -173,7 +166,6 @@ func (s *DescribeStmt) Exec(d *db.Database) error {
 		return err
 	}
 
-	// Construit les lignes pour l'affichage du schéma
 	var rows []map[string]string
 	for _, col := range t.Schema.Columns {
 		row := map[string]string{
@@ -184,17 +176,14 @@ func (s *DescribeStmt) Exec(d *db.Database) error {
 			"Extra": "",
 		}
 
-		// Primary Key
 		if col.PrimaryKey {
 			row["Key"] = "PRI"
 		}
 
-		// Not Null
 		if col.NotNull {
 			row["Null"] = "NO"
 		}
 
-		// Contraintes supplémentaires
 		var extras []string
 		if col.Unique {
 			extras = append(extras, "UNIQUE")
@@ -206,13 +195,11 @@ func (s *DescribeStmt) Exec(d *db.Database) error {
 		rows = append(rows, row)
 	}
 
-	// Affiche le tableau formaté
 	columns := []string{"Field", "Type", "Key", "Null", "Extra"}
 	util.PrintTable(columns, rows)
 	return nil
 }
 
-// ─── USE DATABASE ──────────────────────────────────────────────────────────────
 type UseDatabaseStmt struct {
 	Name string
 }
@@ -221,7 +208,7 @@ func parseUseDatabase(query string) (Statement, error) {
 	re := regexp.MustCompile(`(?i)USE\s+([a-zA-Z0-9_]+);?`)
 	m := re.FindStringSubmatch(query)
 	if len(m) < 2 {
-		return nil, errors.New("syntaxe USE invalide")
+		return nil, errors.New("invalid USE syntax")
 	}
 	return &UseDatabaseStmt{Name: m[1]}, nil
 }
@@ -230,7 +217,6 @@ func (s *UseDatabaseStmt) Exec(d *db.Database) error {
 	return d.SetActiveDB(s.Name)
 }
 
-// ─── CREATE TABLE ──────────────────────────────────────────────────────────────
 type CreateTableStmt struct {
 	Name    string
 	Columns []db.Column
@@ -240,7 +226,7 @@ func parseCreateTable(query string) (Statement, error) {
 	re := regexp.MustCompile(`(?i)CREATE\s+TABLE\s+([a-zA-Z0-9_]+)\s*\((.+)\);?`)
 	m := re.FindStringSubmatch(query)
 	if len(m) < 3 {
-		return nil, errors.New("syntaxe CREATE TABLE invalide")
+		return nil, errors.New("invalid CREATE TABLE syntax")
 	}
 
 	name := m[1]
@@ -250,7 +236,7 @@ func parseCreateTable(query string) (Statement, error) {
 		def = strings.TrimSpace(def)
 		parts := strings.Fields(def)
 		if len(parts) < 2 {
-			return nil, fmt.Errorf("colonne invalide: %s", def)
+			return nil, fmt.Errorf("invalid column: %s", def)
 		}
 
 		col := db.Column{Name: parts[0], Type: db.ColType(strings.ToUpper(parts[1]))}
@@ -272,12 +258,11 @@ func parseCreateTable(query string) (Statement, error) {
 
 func (s *CreateTableStmt) Exec(d *db.Database) error {
 	if d.ActiveDB == "" {
-		return errors.New("aucune base sélectionnée — utilisez USE <database>")
+		return errors.New("no database selected — use USE <database>")
 	}
 	return d.CreateTable(s.Name, db.Schema{Columns: s.Columns})
 }
 
-// ─── DROP TABLE ────────────────────────────────────────────────────────────────
 type DropTableStmt struct {
 	Name string
 }
@@ -286,7 +271,7 @@ func parseDropTable(query string) (Statement, error) {
 	re := regexp.MustCompile(`(?i)DROP\s+TABLE\s+([a-zA-Z0-9_]+);?`)
 	m := re.FindStringSubmatch(query)
 	if len(m) < 2 {
-		return nil, errors.New("syntaxe DROP TABLE invalide")
+		return nil, errors.New("invalid DROP TABLE syntax")
 	}
 	return &DropTableStmt{Name: m[1]}, nil
 }
@@ -296,11 +281,10 @@ func (s *DropTableStmt) Exec(d *db.Database) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Table '%s' supprimée avec succès.\n", s.Name)
+	fmt.Printf("Table '%s' deleted successfully.\n", s.Name)
 	return nil
 }
 
-// ─── INSERT INTO ───────────────────────────────────────────────────────────────
 type InsertStmt struct {
 	Table  string
 	Cols   []string
@@ -311,7 +295,7 @@ func parseInsert(query string) (Statement, error) {
 	re := regexp.MustCompile(`(?i)INSERT\s+INTO\s+([a-zA-Z0-9_]+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\);?`)
 	m := re.FindStringSubmatch(query)
 	if len(m) < 4 {
-		return nil, errors.New("syntaxe INSERT invalide")
+		return nil, errors.New("invalid INSERT syntax")
 	}
 
 	table := m[1]
@@ -319,14 +303,14 @@ func parseInsert(query string) (Statement, error) {
 	vals := splitAndTrim(m[3])
 
 	if len(cols) != len(vals) {
-		return nil, errors.New("nombre de colonnes ≠ nombre de valeurs")
+		return nil, errors.New("column count != value count")
 	}
 	return &InsertStmt{Table: table, Cols: cols, Values: vals}, nil
 }
 
 func (s *InsertStmt) Exec(d *db.Database) error {
 	if d.ActiveDB == "" {
-		return errors.New("aucune base sélectionnée — utilisez USE <database>")
+		return errors.New("no database selected — use USE <database>")
 	}
 
 	t, err := d.GetTable(s.Table)
@@ -342,49 +326,45 @@ func (s *InsertStmt) Exec(d *db.Database) error {
 	return t.Insert(row)
 }
 
-// ─── SELECT ─────────────────────────────────────────────────────────────────────
 type SelectStmt struct {
 	Table            string
 	Column           string
 	Value            string
 	HasWhere         bool
 	OrderByColumn    string
-	OrderByDirection string // "ASC" ou "DESC"
-	Limit            int    // Nombre de lignes à retourner (0 = pas de limite)
+	OrderByDirection string
+	Limit            int
 }
 
 func parseSelect(query string) (Statement, error) {
-	// Supporte: SELECT * FROM table [WHERE col=val] [ORDER BY col [ASC|DESC]] [LIMIT n]
+	// SELECT * FROM table [WHERE col=val] [ORDER BY col [ASC|DESC]] [LIMIT n]
 	re := regexp.MustCompile(`(?i)SELECT\s+\*\s+FROM\s+([a-zA-Z0-9_]+)(?:\s+WHERE\s+([a-zA-Z0-9_]+)\s*=\s*"?([^"]+)"?)?(?:\s+ORDER\s+BY\s+([a-zA-Z0-9_]+)(?:\s+(ASC|DESC))?)?(?:\s+LIMIT\s+(\d+))?;?`)
 	m := re.FindStringSubmatch(query)
 	if len(m) < 2 {
-		return nil, errors.New("syntaxe SELECT invalide")
+		return nil, errors.New("invalid SELECT syntax")
 	}
 
 	stmt := &SelectStmt{Table: m[1]}
 
-	// WHERE clause
 	if len(m) >= 4 && m[2] != "" {
 		stmt.HasWhere = true
 		stmt.Column = m[2]
 		stmt.Value = m[3]
 	}
 
-	// ORDER BY clause
 	if len(m) >= 5 && m[4] != "" {
 		stmt.OrderByColumn = m[4]
 		if len(m) >= 6 && m[5] != "" {
 			stmt.OrderByDirection = strings.ToUpper(m[5])
 		} else {
-			stmt.OrderByDirection = "ASC" // Par défaut
+			stmt.OrderByDirection = "ASC"
 		}
 	}
 
-	// LIMIT clause
 	if len(m) >= 7 && m[6] != "" {
 		limit, err := parseNumber(m[6])
 		if err != nil || limit < 0 {
-			return nil, errors.New("LIMIT doit être un nombre positif")
+			return nil, errors.New("LIMIT must be a positive number")
 		}
 		stmt.Limit = int(limit)
 	}
@@ -394,7 +374,7 @@ func parseSelect(query string) (Statement, error) {
 
 func (s *SelectStmt) Exec(d *db.Database) error {
 	if d.ActiveDB == "" {
-		return errors.New("aucune base sélectionnée — utilisez USE <database>")
+		return errors.New("no database selected — use USE <database>")
 	}
 
 	t, err := d.GetTable(s.Table)
@@ -412,17 +392,14 @@ func (s *SelectStmt) Exec(d *db.Database) error {
 		return err
 	}
 
-	// Tri ORDER BY si spécifié
 	if s.OrderByColumn != "" {
 		sortRows(rows, s.OrderByColumn, s.OrderByDirection)
 	}
 
-	// Limitation LIMIT si spécifié
 	if s.Limit > 0 && s.Limit < len(rows) {
 		rows = rows[:s.Limit]
 	}
 
-	// Affiche le tableau avec colonnes dans l'ordre du schéma
 	var cols []string
 	for _, c := range t.Schema.Columns {
 		cols = append(cols, c.Name)
@@ -432,7 +409,6 @@ func (s *SelectStmt) Exec(d *db.Database) error {
 	return nil
 }
 
-// ─── UPDATE ─────────────────────────────────────────────────────────────────────
 type UpdateStmt struct {
 	Table       string
 	Updates     map[string]string
@@ -441,11 +417,10 @@ type UpdateStmt struct {
 }
 
 func parseUpdate(query string) (Statement, error) {
-	// UPDATE table SET col1=val1, col2=val2 WHERE column=value
 	re := regexp.MustCompile(`(?i)UPDATE\s+([a-zA-Z0-9_]+)\s+SET\s+(.+?)\s+WHERE\s+([a-zA-Z0-9_]+)\s*=\s*"?([^";]+)"?;?`)
 	m := re.FindStringSubmatch(query)
 	if len(m) < 5 {
-		return nil, errors.New("syntaxe UPDATE invalide (attendu: UPDATE table SET col=val WHERE col=val)")
+		return nil, errors.New("invalid UPDATE syntax (expected: UPDATE table SET col=val WHERE col=val)")
 	}
 
 	table := m[1]
@@ -453,13 +428,12 @@ func parseUpdate(query string) (Statement, error) {
 	whereCol := m[3]
 	whereVal := m[4]
 
-	// Parse les colonnes à mettre à jour (col1=val1, col2=val2)
 	updates := make(map[string]string)
 	assignments := splitAndTrim(setPart)
 	for _, assign := range assignments {
 		parts := strings.Split(assign, "=")
 		if len(parts) != 2 {
-			return nil, fmt.Errorf("assignation invalide: %s", assign)
+			return nil, fmt.Errorf("invalid assignment: %s", assign)
 		}
 		colName := strings.TrimSpace(parts[0])
 		colValue := strings.Trim(strings.TrimSpace(parts[1]), `"`)
@@ -476,7 +450,7 @@ func parseUpdate(query string) (Statement, error) {
 
 func (s *UpdateStmt) Exec(d *db.Database) error {
 	if d.ActiveDB == "" {
-		return errors.New("aucune base sélectionnée — utilisez USE <database>")
+		return errors.New("no database selected — use USE <database>")
 	}
 
 	t, err := d.GetTable(s.Table)
@@ -489,11 +463,10 @@ func (s *UpdateStmt) Exec(d *db.Database) error {
 		return err
 	}
 
-	fmt.Printf("%d ligne(s) mise(s) à jour.\n", count)
+	fmt.Printf("%d row(s) updated.\n", count)
 	return nil
 }
 
-// ─── DELETE ─────────────────────────────────────────────────────────────────────
 type DeleteStmt struct {
 	Table       string
 	WhereColumn string
@@ -501,11 +474,10 @@ type DeleteStmt struct {
 }
 
 func parseDelete(query string) (Statement, error) {
-	// DELETE FROM table WHERE column=value
 	re := regexp.MustCompile(`(?i)DELETE\s+FROM\s+([a-zA-Z0-9_]+)\s+WHERE\s+([a-zA-Z0-9_]+)\s*=\s*"?([^";]+)"?;?`)
 	m := re.FindStringSubmatch(query)
 	if len(m) < 4 {
-		return nil, errors.New("syntaxe DELETE invalide (attendu: DELETE FROM table WHERE col=val)")
+		return nil, errors.New("invalid DELETE syntax (expected: DELETE FROM table WHERE col=val)")
 	}
 
 	return &DeleteStmt{
@@ -517,7 +489,7 @@ func parseDelete(query string) (Statement, error) {
 
 func (s *DeleteStmt) Exec(d *db.Database) error {
 	if d.ActiveDB == "" {
-		return errors.New("aucune base sélectionnée — utilisez USE <database>")
+		return errors.New("no database selected — use USE <database>")
 	}
 
 	t, err := d.GetTable(s.Table)
@@ -530,11 +502,10 @@ func (s *DeleteStmt) Exec(d *db.Database) error {
 		return err
 	}
 
-	fmt.Printf("%d ligne(s) supprimée(s).\n", count)
+	fmt.Printf("%d row(s) deleted.\n", count)
 	return nil
 }
 
-// ─── Helpers ───────────────────────────────────────────────────────────────────
 func splitAndTrim(s string) []string {
 	parts := strings.Split(s, ",")
 	for i := range parts {
@@ -543,34 +514,29 @@ func splitAndTrim(s string) []string {
 	return parts
 }
 
-// sortRows trie les lignes selon une colonne et une direction (ASC/DESC)
+// sortRows sorts rows by column in ASC or DESC direction
 func sortRows(rows []map[string]string, column, direction string) {
-	// Fonction de comparaison
 	less := func(i, j int) bool {
 		valI := rows[i][column]
 		valJ := rows[j][column]
 
-		// Tri numérique si les deux valeurs sont des nombres
 		numI, errI := parseNumber(valI)
 		numJ, errJ := parseNumber(valJ)
 
 		if errI == nil && errJ == nil {
-			// Comparaison numérique
 			if direction == "DESC" {
 				return numI > numJ
 			}
 			return numI < numJ
 		}
 
-		// Comparaison alphabétique
 		if direction == "DESC" {
 			return valI > valJ
 		}
 		return valI < valJ
 	}
 
-	// Tri en place avec sort.Slice (importé via "sort")
-	// On doit importer "sort" en haut du fichier
+	// Bubble sort
 	for i := 0; i < len(rows)-1; i++ {
 		for j := i + 1; j < len(rows); j++ {
 			if !less(i, j) {
@@ -580,7 +546,6 @@ func sortRows(rows []map[string]string, column, direction string) {
 	}
 }
 
-// parseNumber tente de convertir une chaîne en nombre
 func parseNumber(s string) (float64, error) {
 	var num float64
 	_, err := fmt.Sscanf(s, "%f", &num)
