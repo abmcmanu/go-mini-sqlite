@@ -7,7 +7,7 @@ This is an **educational project** built to understand the core concepts behind 
 
 ---
 
-### 🧩 Features
+### Features
 
 - Support for **multiple databases**  
 - **Tables with customizable schemas** (`INT`, `STRING`, with `PRIMARY KEY`, `UNIQUE`, `NOT NULL` constraints)  
@@ -45,7 +45,7 @@ This is an **educational project** built to understand the core concepts behind 
 
 ---
 
-### 📝 Usage Examples
+### Usage Examples
 
 ```sql
 -- Database setup
@@ -104,7 +104,7 @@ DESCRIBE users;
 
 ---
 
-### 🧠 Concepts & Architecture
+### Concepts & Architecture
 
 #### 1. Data Structures
 - **B+Tree** – Logical index for fast row lookup by primary key  
@@ -132,7 +132,7 @@ DESCRIBE users;
 
 ---
 
-### ⚠️ Current Limitations
+### Current Limitations
 
 - The parser does **not** support multiline statements or comments
 - No support yet for `JOIN`
@@ -142,4 +142,4 @@ DESCRIBE users;
 
 ---
 
-> 🧪 *A hands-on project to explore how relational databases work from the inside out — from parsing to persistence.*
+> *A hands-on project to explore how relational databases work from the inside out — from parsing to persistence.*
